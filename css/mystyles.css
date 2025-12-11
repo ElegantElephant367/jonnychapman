@@ -1,0 +1,23 @@
+main{
+    font-family: 'Open Sans', sans-serif;
+    font-style: normal;
+    background-color: rgba(211, 211, 211, 0.693);
+}
+head{
+    background-color: rgba(211, 211, 211, 0.662);
+}
+p{
+    color: purple;
+    font-style: normal;
+    font-weight: bold;
+}
+.root{
+    color: black;
+    font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
+    font-weight: lighter;
+    font-size: larger;
+}
+.aman{
+    color: black;
+    font-size: calc(1.3rem + 0.6vw) !important;
+}

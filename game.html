@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Green Snake</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tone.js for subtle sound effects -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    <style>
+        /* Custom font and general reset */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d1117; /* Dark background */
+        }
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        #gameCanvas {
+            border: 4px solid #1f2937;
+            background-color: #0f172a; /* Inner canvas background */
+            box-shadow: 0 0 20px rgba(163, 230, 53, 0.5); /* Neon Green Shadow */
+            border-radius: 8px;
+            touch-action: none; 
+            margin-bottom: 20px;
+        }
+        /* Style for the game message modal */
+        #messageBox {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(30, 41, 59, 0.95);
+            border: 3px solid #a3e635; /* Neon Green Border */
+            color: #e2e8f0;
+            padding: 30px 40px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(163, 230, 53, 0.7);
+            z-index: 100;
+            display: none;
+            max-width: 90%;
+            width: 400px;
+        }
+        .btn {
+            background-color: #a3e635; /* Neon Green Button */
+            color: #0d1117;
+            padding: 10px 20px;
+            border-radius: 6px;
+            transition: background-color 0.2s, transform 0.1s;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+        .btn:hover {
+            background-color: #65a30d; /* Darker Green on hover */
+            transform: translateY(-1px);
+        }
+        .btn:active {
+            transform: translateY(1px);
+        }
+        /* Input styling */
+        .input-text {
+            border: 2px solid #65a30d;
+            background: #0d1117;
+            color: #a3e635;
+            padding: 8px;
+            border-radius: 4px;
+            width: 100%;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <h1 class="text-4xl font-extrabold text-lime-400 mb-6 mt-4 drop-shadow-lg shadow-lime-500/50">NEON SNAKE</h1>
+        
+        <!-- Scoreboard (Score centered) -->
+        <div class="flex justify-center w-full max-w-xl mb-4 text-white p-3 bg-slate-800 rounded-lg shadow-inner">
+            <div class="text-lg font-semibold text-lime-300">Score: <span id="scoreValue">0</span></div>
+        </div>
+
+        <!-- Canvas for the Game -->
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- High Score Board -->
+        <div class="w-full max-w-xl p-4 bg-slate-900 rounded-lg shadow-lg">
+            <h2 class="text-xl font-bold text-lime-400 mb-3 text-center">Top 5 High Scores (Local)</h2>
+            <ul id="highScoreList" class="space-y-1 text-sm text-gray-300">
+                <!-- Scores will be injected here -->
+            </ul>
+        </div>
+
+        <!-- Message Box (Hidden by default) -->
+        <div id="messageBox" class="p-8 rounded-xl">
+            <h2 id="messageTitle" class="text-3xl font-bold mb-4 text-lime-300"></h2>
+            <p id="messageText" class="text-xl mb-3"></p>
+            <input type="text" id="usernameInput" class="input-text" placeholder="Enter your name (Max 10 chars)" maxlength="10">
+            <button id="restartButton" class="btn">Start Game</button>
+        </div>
+
+        <!-- Mobile Controls removed per user request -->
+
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreValueEl = document.getElementById('scoreValue');
+        const messageBox = document.getElementById('messageBox');
+        const messageTitle = document.getElementById('messageTitle');
+        const messageText = document.getElementById('messageText');
+        const restartButton = document.getElementById('restartButton');
+        const usernameInput = document.getElementById('usernameInput');
+        const highScoreListEl = document.getElementById('highScoreList');
+        // Mobile Controls elements removed
+
+        // --- Game Constants ---
+        const TILE_SIZE = 20;
+        const GRID_WIDTH = 25;
+        const GRID_HEIGHT = 20;
+        const INITIAL_SPEED = 100; // Start faster
+        const SPEED_INCREASE_MS = 5;
+        const MAX_HIGH_SCORES = 5;
+
+        canvas.width = GRID_WIDTH * TILE_SIZE;
+        canvas.height = GRID_HEIGHT * TILE_SIZE;
+
+        // --- Game State ---
+        let snake = [];
+        let food = {};
+        let dx = 1;
+        let dy = 0;
+        let changingDirection = false;
+        let gameLoopId;
+        let currentSpeed = INITIAL_SPEED;
+        let score = 0;
+        let isGameOver = false;
+
+        // --- Sound Setup (Tone.js) ---
+        const eatSynth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "sine" },
+            envelope: { attack: 0.005, decay: 0.1, sustain: 0.0, release: 0.1 }
+        }).toDestination();
+        const dieSynth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "square" },
+            envelope: { attack: 0.1, decay: 0.5, sustain: 0.0, release: 0.5 }
+        }).toDestination();
+
+        function playEatSound() {
+            eatSynth.triggerAttackRelease(["C5", "E5", "G5"], "8n");
+        }
+
+        function playDieSound() {
+            dieSynth.triggerAttackRelease(["C3", "B2"], "4n");
+        }
+        
+        // --- High Score Logic (Local Storage) ---
+        
+        /**
+         * Loads and displays the top high scores from localStorage.
+         */
+        function loadHighScores() {
+            try {
+                const scoresJson = localStorage.getItem('snakeHighScores');
+                let scores = scoresJson ? JSON.parse(scoresJson) : [];
+                
+                // Ensure scores are sorted (highest first)
+                scores.sort((a, b) => b.score - a.score);
+
+                let html = '';
+                if (scores.length === 0) {
+                    html = '<li class="text-center italic text-gray-500">No scores recorded on this device yet.</li>';
+                } else {
+                    scores.slice(0, MAX_HIGH_SCORES).forEach((data, index) => {
+                        html += `
+                            <li class="flex justify-between p-1 rounded ${index === 0 ? 'bg-lime-900 text-lime-300 font-bold' : 'hover:bg-slate-700'}">
+                                <span>#${index + 1} - ${data.username}</span>
+                                <span class="text-yellow-300">${data.score}</span>
+                            </li>
+                        `;
+                    });
+                }
+                highScoreListEl.innerHTML = html;
+            } catch (e) {
+                console.error("Error loading high scores from local storage: ", e);
+                highScoreListEl.innerHTML = '<li class="text-center italic text-red-400">Could not load local scores.</li>';
+            }
+        }
+
+        /**
+         * Saves the current score to localStorage if it makes the top list.
+         */
+        function saveScore(username) {
+            if (score === 0) return;
+
+            try {
+                const scoresJson = localStorage.getItem('snakeHighScores');
+                let scores = scoresJson ? JSON.parse(scoresJson) : [];
+                
+                // Add the new score
+                scores.push({
+                    username: username.substring(0, 10), // Limit name length
+                    score: score,
+                    timestamp: new Date().toISOString()
+                });
+
+                // Sort and truncate
+                scores.sort((a, b) => b.score - a.score);
+                scores = scores.slice(0, MAX_HIGH_SCORES); 
+
+                // Save back to local storage
+                localStorage.setItem('snakeHighScores', JSON.stringify(scores));
+                loadHighScores(); // Refresh the list
+            } catch (e) {
+                console.error("Error saving score to local storage: ", e);
+            }
+        }
+        
+        // --- Game Logic Functions ---
+
+        /**
+         * Initializes or resets the game state.
+         */
+        function initGame() {
+            // Hide message box and reset game state
+            messageBox.style.display = 'none';
+            usernameInput.style.display = 'none'; // Hide input when game starts
+
+            snake = [ { x: 5, y: 10 }, { x: 4, y: 10 }, { x: 3, y: 10 } ];
+            dx = 1; dy = 0;
+            currentSpeed = INITIAL_SPEED;
+            score = 0;
+            isGameOver = false;
+            changingDirection = false;
+
+            if (gameLoopId) clearTimeout(gameLoopId);
+
+            updateUI();
+            placeFood();
+            main();
+        }
+
+        /**
+         * The main game loop function.
+         */
+        function main() {
+            if (isGameOver) {
+                showGameOver();
+                return;
+            }
+
+            changingDirection = false;
+
+            gameLoopId = setTimeout(() => {
+                clearCanvas();
+                advanceSnake();
+                drawFood();
+                drawSnake();
+                main();
+            }, currentSpeed);
+        }
+
+        /**
+         * Clears the entire canvas for the next frame.
+         */
+        function clearCanvas() {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        /**
+         * Draws the snake on the canvas with neon green color.
+         */
+        function drawSnake() {
+            snake.forEach((segment, index) => {
+                const color = index === 0 ? '#a3e635' : '#4d7c0f'; // Head: Bright, Body: Darker
+                ctx.fillStyle = color;
+                ctx.shadowColor = '#a3e635';
+                ctx.shadowBlur = index === 0 ? 10 : 5;
+                
+                // Draw the segment with a slight margin for grid effect
+                ctx.fillRect(
+                    segment.x * TILE_SIZE + 1,
+                    segment.y * TILE_SIZE + 1,
+                    TILE_SIZE - 2,
+                    TILE_SIZE - 2
+                );
+            });
+            ctx.shadowBlur = 0; // Reset shadow
+        }
+
+        /**
+         * Draws the food on the canvas as a red square.
+         */
+        function drawFood() {
+            ctx.fillStyle = '#ef4444'; // Red
+            ctx.shadowColor = '#ef4444';
+            ctx.shadowBlur = 15;
+            // Draw the food as a square
+            ctx.fillRect(
+                food.x * TILE_SIZE + 1,
+                food.y * TILE_SIZE + 1,
+                TILE_SIZE - 2,
+                TILE_SIZE - 2
+            );
+            ctx.shadowBlur = 0; // Reset shadow
+        }
+
+        /**
+         * Moves the snake forward and checks for collisions.
+         */
+        function advanceSnake() {
+            const head = { x: snake[0].x + dx, y: snake[0].y + dy };
+            snake.unshift(head);
+
+            const didEatFood = head.x === food.x && head.y === food.y;
+
+            if (didEatFood) {
+                playEatSound(); // Play sound effect
+                score++;
+                // Increase speed for every square eaten
+                currentSpeed = Math.max(50, currentSpeed - SPEED_INCREASE_MS); 
+                updateUI();
+                placeFood();
+            } else {
+                snake.pop();
+            }
+
+            if (hitWall(head) || hitSelf()) {
+                isGameOver = true;
+                playDieSound(); // Play sound effect
+            }
+        }
+
+        /**
+         * Checks if the snake has collided with itself.
+         * @returns {boolean} True if the snake hit itself.
+         */
+        function hitSelf() {
+            for (let i = 1; i < snake.length; i++) {
+                if (snake[i].x === snake[0].x && snake[i].y === snake[0].y) return true;
+            }
+            return false;
+        }
+
+        /**
+         * Checks if the snake has hit the boundary walls.
+         * @param {{x: number, y: number}} head The snake's head coordinates.
+         * @returns {boolean} True if the snake hit a wall.
+         */
+        function hitWall(head) {
+            return head.x < 0 || head.x >= GRID_WIDTH || head.y < 0 || head.y >= GRID_HEIGHT;
+        }
+
+        /**
+         * Generates a random coordinate for the food.
+         */
+        function randomCoord(min, max) {
+            return Math.floor(Math.random() * (max - min)) + min;
+        }
+
+        /**
+         * Places food at a random unoccupied grid cell.
+         */
+        function placeFood() {
+            let newFood;
+            do {
+                newFood = { x: randomCoord(0, GRID_WIDTH), y: randomCoord(0, GRID_HEIGHT) };
+            } while (snake.some(segment => segment.x === newFood.x && segment.y === newFood.y));
+            food = newFood;
+        }
+
+        /**
+         * Updates the score displayed on the UI.
+         */
+        function updateUI() {
+            scoreValueEl.textContent = score;
+        }
+
+        /**
+         * Displays the game over message box.
+         */
+        function showGameOver() {
+            messageTitle.textContent = "GAME OVER!";
+            messageText.innerHTML = `Final Score: <span class="text-yellow-400 font-bold">${score}</span> points.`;
+            restartButton.textContent = "Save & Play Again";
+            
+            // Show username input
+            usernameInput.style.display = 'block';
+            usernameInput.value = localStorage.getItem('snakeUsername') || '';
+            
+            messageBox.style.display = 'block';
+        }
+
+        /**
+         * Changes the snake's direction based on user input.
+         * @param {number} newDx New direction x (-1, 0, 1).
+         * @param {number} newDy New direction y (-1, 0, 1).
+         */
+        function changeDirection(newDx, newDy) {
+            if (changingDirection) return;
+            // Prevent 180-degree turns
+            if (!(newDx === -dx || newDy === -dy)) {
+                dx = newDx;
+                dy = newDy;
+                changingDirection = true;
+            }
+        }
+
+        // --- Event Listeners & Startup ---
+
+        // Keyboard controls
+        document.addEventListener('keydown', (event) => {
+            if (isGameOver && event.code !== 'Space') return;
+
+            switch (event.code) {
+                case 'ArrowUp': case 'KeyW': changeDirection(0, -1); break;
+                case 'ArrowDown': case 'KeyS': changeDirection(0, 1); break;
+                case 'ArrowLeft': case 'KeyA': changeDirection(-1, 0); break;
+                case 'ArrowRight': case 'KeyD': changeDirection(1, 0); break;
+                case 'Space': if (isGameOver) restartGameHandler(); break;
+            }
+        });
+
+        function restartGameHandler() {
+            const username = usernameInput.value.trim() || 'Anonymous';
+            
+            if (score > 0) {
+                saveScore(username);
+            }
+            
+            // Save username preference locally
+            localStorage.setItem('snakeUsername', username);
+
+            initGame();
+        }
+
+        restartButton.addEventListener('click', restartGameHandler);
+
+        // Mobile control event listeners removed per user request
+
+        // Initial game load
+        window.onload = () => {
+            // Load local high scores immediately
+            loadHighScores(); 
+
+            // Display initial message screen
+            messageTitle.textContent = "Welcome to Neon Snake!";
+            messageText.innerHTML = "Eat the red squares to grow. Avoid the walls and your tail!";
+            restartButton.textContent = "Start Game";
+            usernameInput.value = localStorage.getItem('snakeUsername') || 'Player';
+            messageBox.style.display = 'block';
+        };
+    </script>
+</body>
+</html>
